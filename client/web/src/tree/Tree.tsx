@@ -143,6 +143,7 @@ export class Tree extends React.PureComponent<Props, State> {
             }
         },
         [Key.ArrowUp]: () => {
+            console.log(this.state.selectedNode)
             if (this.state.selectedNode) {
                 console.log('!!!!SELECTED NODE', this.state.selectedNode)
                 this.selectNode(previousChild(this.state.selectedNode, this.state.selectedNode.index))

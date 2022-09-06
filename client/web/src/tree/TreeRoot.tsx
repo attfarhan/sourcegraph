@@ -1,6 +1,6 @@
 /* eslint jsx-a11y/no-noninteractive-tabindex: warn*/
 import * as React from 'react'
-import { forwardRef, useEffect, useMemo } from 'react'
+import { forwardRef, useCallback, useEffect, useMemo } from 'react'
 
 import * as H from 'history'
 import { EMPTY, merge, of, Subject } from 'rxjs'
@@ -154,12 +154,20 @@ export const TreeRoot = forwardRef<HTMLElement, TreeRootProps>((props: TreeRootP
      * through the onHover prop. This method only gets called on the root tree layer component so we can debounce
      * the hover prefetch requests.
      */
-    const fetchChildContents = (path: string): void => {
-        rowHovers.next(path)
-    }
-    const setChildNode = (node: TreeNode, index: number): void => {
-        node.childNodes[index] = node
-    }
+    const fetchChildContents = useCallback(
+        (path: string): void => {
+            rowHovers.next(path)
+        },
+        [rowHovers]
+    )
+
+    const setChildNode = useCallback(
+        (childNode: TreeNode, index: number): void => {
+            console.log('SET CHILD NODE', childNode)
+            node.childNodes[index] = childNode
+        },
+        [node]
+    )
 
     return (
         <>
