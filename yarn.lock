@@ -29175,6 +29175,7 @@ pvutils@latest:
     typed-scss-modules: ^4.1.1
     typescript: ^4.7.2
     use-callback-ref: ^1.2.5
+    use-custom-compare: ^1.2.0
     use-debounce: ^8.0.1
     use-deep-compare-effect: ^1.6.1
     use-resize-observer: ^9.0.2
@@ -32845,6 +32846,16 @@ pvutils@latest:
     "@types/react":
       optional: true
   checksum: b0027242311ed3fb006575c3be69efe31946f17129f2464707f4fcf2e167b91917236569a1d622c57b36843bc05efd9740a4ba51591553ad6fe2799cc12b138e
+  languageName: node
+  linkType: hard
+
+"use-custom-compare@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "use-custom-compare@npm:1.2.0"
+  peerDependencies:
+    react: ">=16.8.0 <=17.x"
+    typescript: ">=4.0.2"
+  checksum: ff59d38e7ceacc88c73e245c507051e4795cfb27c0fd07992f0adb393114751075d7442c8af14f41e59659abcef5efd5f92251bc48a6d46f5ba9d2bcb79d098e
   languageName: node
   linkType: hard
 

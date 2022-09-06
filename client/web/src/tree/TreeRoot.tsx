@@ -1,19 +1,10 @@
 /* eslint jsx-a11y/no-noninteractive-tabindex: warn*/
 import * as React from 'react'
+import { forwardRef, useEffect, useMemo } from 'react'
 
 import * as H from 'history'
-import { EMPTY, merge, of, Subject, Subscription } from 'rxjs'
-import {
-    catchError,
-    debounceTime,
-    delay,
-    distinctUntilChanged,
-    filter,
-    mergeMap,
-    share,
-    switchMap,
-    takeUntil,
-} from 'rxjs/operators'
+import { EMPTY, merge, of, Subject } from 'rxjs'
+import { catchError, debounceTime, delay, mapTo, mergeMap, share, switchMap, takeUntil } from 'rxjs/operators'
 
 import { asError, ErrorLike, isErrorLike } from '@sourcegraph/common'
 import { FileDecorationsByPath } from '@sourcegraph/shared/src/api/extension/extensionHostApi'
@@ -23,17 +14,17 @@ import { Scalars, TreeFields } from '@sourcegraph/shared/src/graphql-operations'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
 import { AbsoluteRepo } from '@sourcegraph/shared/src/util/url'
-import { LoadingSpinner } from '@sourcegraph/wildcard'
+import { LoadingSpinner, useObservable } from '@sourcegraph/wildcard'
 
 import { getFileDecorations } from '../backend/features'
 import { requestGraphQL } from '../backend/graphql'
 
 import { ChildTreeLayer } from './ChildTreeLayer'
-import { TreeLayerTable, TreeLayerCell, TreeRowAlert } from './components'
+import { TreeRowAlert, TreeLayerTable, TreeLayerCell } from './components'
 import { MAX_TREE_ENTRIES } from './constants'
 import { TreeNode } from './Tree'
 import { TreeRootContext } from './TreeContext'
-import { hasSingleChild, compareTreeProps, singleChildEntriesToGitTree, SingleChildGitTree } from './util'
+import { SingleChildGitTree, hasSingleChild, singleChildEntriesToGitTree } from './util'
 
 import styles from './Tree.module.scss'
 
@@ -60,6 +51,7 @@ export interface TreeRootProps extends AbsoluteRepo, ExtensionsControllerProps, 
     setActiveNode: (node: TreeNode) => void
     repoID: Scalars['ID']
     enableMergedFileSymbolSidebar: boolean
+    initializeParentNode?: (node: TreeNode) => void
 }
 
 const LOADING = 'loading' as const
@@ -68,193 +60,162 @@ interface TreeRootState {
     fileDecorationsByPath: FileDecorationsByPath
 }
 
-export class TreeRoot extends React.Component<TreeRootProps, TreeRootState> {
-    public node: TreeNode
-    private subscriptions = new Subscription()
-    private componentUpdates = new Subject<TreeRootProps>()
-    private rowHovers = new Subject<string>()
-
-    constructor(props: TreeRootProps) {
-        super(props)
-        this.node = {
-            index: this.props.index,
-            parent: this.props.parent,
-            childNodes: [],
-            path: '',
-            url: '',
-        }
-        this.state = {
-            fileDecorationsByPath: {},
-        }
+export const TreeRoot = forwardRef<HTMLElement, TreeRootProps>((props: TreeRootProps, ref) => {
+    const node: TreeNode = {
+        index: props.index,
+        parent: props.parent,
+        childNodes: [],
+        path: '',
+        url: '',
     }
 
-    public componentDidMount(): void {
-        // Set this row as a childNode of its TreeLayer parent
-        this.props.setChildNodes(this.node, this.node.index)
+    const rowHovers = useMemo(() => new Subject<string>(), [])
 
-        const treeOrErrors = this.componentUpdates.pipe(
-            distinctUntilChanged(compareTreeProps),
-            filter(props => props.isExpanded),
-            switchMap(props => {
-                const treeFetch = fetchTreeEntries({
-                    repoName: props.repoName,
-                    revision: props.revision,
-                    commitID: props.commitID,
-                    filePath: props.parentPath || '',
-                    first: MAX_TREE_ENTRIES,
-                    requestGraphQL: ({ request, variables }) => requestGraphQL(request, variables),
-                }).pipe(
-                    catchError(error => [asError(error)]),
-                    share()
-                )
-                return merge(treeFetch, of(LOADING).pipe(delay(300), takeUntil(treeFetch)))
-            })
+    const fetchTreeResult = useMemo(() => {
+        if (!props.isExpanded) {
+            return EMPTY
+        }
+
+        const treeFetch = fetchTreeEntries({
+            repoName: props.repoName,
+            revision: props.revision,
+            commitID: props.commitID,
+            filePath: props.parentPath || '',
+            first: MAX_TREE_ENTRIES,
+            requestGraphQL: ({ request, variables }) => requestGraphQL(request, variables),
+        }).pipe(
+            catchError(error => [asError(error)]),
+            share()
         )
 
-        this.subscriptions.add(
-            treeOrErrors.subscribe(
-                treeOrError => {
-                    // clear file decorations before latest file decorations come
-                    this.setState({ treeOrError, fileDecorationsByPath: {} })
-                },
-                error => console.error(error)
+        return merge(treeFetch, of(LOADING).pipe(delay(300), takeUntil(treeFetch)))
+    }, [props.repoName, props.revision, props.commitID, props.parentPath, props.isExpanded])
+
+    const treeOrError = useObservable(fetchTreeResult)
+
+    const fileDecorationsByPath =
+        useObservable(
+            useMemo(
+                () =>
+                    merge(
+                        fetchTreeResult.pipe(mapTo({})),
+                        fetchTreeResult.pipe(
+                            switchMap(treeOrError =>
+                                treeOrError !== 'loading' && !isErrorLike(treeOrError)
+                                    ? getFileDecorations({
+                                          files: treeOrError.entries,
+                                          repoName: props.repoName,
+                                          commitID: props.commitID,
+                                          extensionsController: props.extensionsController,
+                                          parentNodeUri: treeOrError.url,
+                                      })
+                                    : EMPTY
+                            )
+                        )
+                    ),
+                [fetchTreeResult, props.commitID, props.repoName, props.extensionsController]
             )
-        )
+        ) ?? {}
 
-        this.subscriptions.add(
-            treeOrErrors
-                .pipe(
-                    switchMap(treeOrError =>
-                        treeOrError !== 'loading' && !isErrorLike(treeOrError)
-                            ? getFileDecorations({
-                                  files: treeOrError.entries,
-                                  repoName: this.props.repoName,
-                                  commitID: this.props.commitID,
-                                  extensionsController: this.props.extensionsController,
-                                  parentNodeUri: treeOrError.url,
-                              })
-                            : EMPTY
-                    )
-                )
-                .subscribe(fileDecorationsByPath => {
-                    this.setState({ fileDecorationsByPath })
-                })
-        )
+    useEffect(() => {
+        // Set this row as a childNode of its TreeLayer parent
+        props.setChildNodes(node, node.index)
+        props.initializeParentNode?.(node)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [node])
 
-        // This handles pre-fetching when a user
-        // hovers over a directory. The `subscribe` is empty because
-        // we simply want to cache the network request.
-        this.subscriptions.add(
-            this.rowHovers
-                .pipe(
+    useObservable(
+        useMemo(
+            () =>
+                rowHovers.pipe(
                     debounceTime(100),
                     mergeMap(path =>
                         fetchTreeEntries({
-                            repoName: this.props.repoName,
-                            revision: this.props.revision,
-                            commitID: this.props.commitID,
+                            repoName: props.repoName,
+                            revision: props.revision,
+                            commitID: props.commitID,
                             filePath: path,
                             first: MAX_TREE_ENTRIES,
                             requestGraphQL: ({ request, variables }) => requestGraphQL(request, variables),
                         }).pipe(catchError(error => [asError(error)]))
                     )
-                )
-                .subscribe()
+                ),
+            [props.repoName, props.revision, props.commitID, rowHovers]
         )
+    )
 
-        // When we're at the root tree layer, fetch the tree contents on mount.
-        this.componentUpdates.next(this.props)
+    let singleChildTreeEntry = {} as SingleChildGitTree
+    if (treeOrError && treeOrError !== LOADING && !isErrorLike(treeOrError) && hasSingleChild(treeOrError.entries)) {
+        singleChildTreeEntry = singleChildEntriesToGitTree(treeOrError.entries)
     }
 
-    public componentDidUpdate(): void {
-        this.componentUpdates.next(this.props)
-    }
-    public componentWillUnmount(): void {
-        this.subscriptions.unsubscribe()
-    }
-
-    public render(): JSX.Element {
-        const { treeOrError } = this.state
-
-        let singleChildTreeEntry = {} as SingleChildGitTree
-        if (
-            treeOrError &&
-            treeOrError !== LOADING &&
-            !isErrorLike(treeOrError) &&
-            hasSingleChild(treeOrError.entries)
-        ) {
-            singleChildTreeEntry = singleChildEntriesToGitTree(treeOrError.entries)
-        }
-
-        return (
-            <>
-                {isErrorLike(treeOrError) ? (
-                    <TreeRowAlert
-                        // needed because of dynamic styling
-                        style={errorWidth(localStorage.getItem(this.props.sizeKey) ? this.props.sizeKey : undefined)}
-                        prefix="Error loading tree"
-                        error={treeOrError}
-                    />
-                ) : (
-                    /**
-                     * TODO: Improve accessibility here.
-                     * We should not be stealing focus here, we should let the user focus on the actual items listed.
-                     * Issue: https://github.com/sourcegraph/sourcegraph/issues/19167
-                     */
-                    <TreeLayerTable tabIndex={0}>
-                        <tbody>
-                            <tr>
-                                <TreeLayerCell>
-                                    {treeOrError === LOADING ? (
-                                        <div className={styles.treeLoadingSpinner}>
-                                            <LoadingSpinner className="tree-page__entries-loader mr-2" />
-                                            Loading tree
-                                        </div>
-                                    ) : (
-                                        treeOrError && (
-                                            <TreeRootContext.Provider
-                                                value={{
-                                                    rootTreeUrl: treeOrError.url,
-                                                    repoID: this.props.repoID,
-                                                    repoName: this.props.repoName,
-                                                    revision: this.props.revision,
-                                                    commitID: this.props.commitID,
-                                                }}
-                                            >
-                                                <ChildTreeLayer
-                                                    {...this.props}
-                                                    parent={this.node}
-                                                    depth={-1 as number}
-                                                    entries={treeOrError.entries}
-                                                    singleChildTreeEntry={singleChildTreeEntry}
-                                                    childrenEntries={singleChildTreeEntry.children}
-                                                    onHover={this.fetchChildContents}
-                                                    setChildNodes={this.setChildNode}
-                                                    fileDecorationsByPath={this.state.fileDecorationsByPath}
-                                                    enableMergedFileSymbolSidebar={
-                                                        this.props.enableMergedFileSymbolSidebar
-                                                    }
-                                                />
-                                            </TreeRootContext.Provider>
-                                        )
-                                    )}
-                                </TreeLayerCell>
-                            </tr>
-                        </tbody>
-                    </TreeLayerTable>
-                )}
-            </>
-        )
-    }
     /**
      * Prefetches the children of hovered tree rows. Gets passed from the root tree layer to child tree layers
      * through the onHover prop. This method only gets called on the root tree layer component so we can debounce
      * the hover prefetch requests.
      */
-    private fetchChildContents = (path: string): void => {
-        this.rowHovers.next(path)
+    const fetchChildContents = (path: string): void => {
+        rowHovers.next(path)
     }
-    private setChildNode = (node: TreeNode, index: number): void => {
-        this.node.childNodes[index] = node
+    const setChildNode = (node: TreeNode, index: number): void => {
+        node.childNodes[index] = node
     }
-}
+
+    return (
+        <>
+            {isErrorLike(treeOrError) ? (
+                <TreeRowAlert
+                    // needed because of dynamic styling
+                    style={errorWidth(localStorage.getItem(props.sizeKey) ? props.sizeKey : undefined)}
+                    prefix="Error loading tree"
+                    error={treeOrError}
+                />
+            ) : (
+                /**
+                 * TODO: Improve accessibility here.
+                 * We should not be stealing focus here, we should let the user focus on the actual items listed.
+                 * Issue: https://github.com/sourcegraph/sourcegraph/issues/19167
+                 */
+                <TreeLayerTable tabIndex={0}>
+                    <tbody>
+                        <tr>
+                            <TreeLayerCell>
+                                {treeOrError === LOADING ? (
+                                    <div className={styles.treeLoadingSpinner}>
+                                        <LoadingSpinner className="tree-page__entries-loader mr-2" />
+                                        Loading tree
+                                    </div>
+                                ) : (
+                                    treeOrError && (
+                                        <TreeRootContext.Provider
+                                            value={{
+                                                rootTreeUrl: treeOrError.url,
+                                                repoID: props.repoID,
+                                                repoName: props.repoName,
+                                                revision: props.revision,
+                                                commitID: props.commitID,
+                                            }}
+                                        >
+                                            <ChildTreeLayer
+                                                {...props}
+                                                parent={node}
+                                                depth={-1 as number}
+                                                entries={treeOrError.entries}
+                                                singleChildTreeEntry={singleChildTreeEntry}
+                                                childrenEntries={singleChildTreeEntry.children}
+                                                onHover={fetchChildContents}
+                                                setChildNodes={setChildNode}
+                                                fileDecorationsByPath={fileDecorationsByPath}
+                                                enableMergedFileSymbolSidebar={props.enableMergedFileSymbolSidebar}
+                                            />
+                                        </TreeRootContext.Provider>
+                                    )
+                                )}
+                            </TreeLayerCell>
+                        </tr>
+                    </tbody>
+                </TreeLayerTable>
+            )}
+        </>
+    )
+})

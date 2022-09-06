@@ -114,6 +114,7 @@ const previousChild = (node: TreeNode, index: number): TreeNode => {
 
     const previous = validChildNodes[index - 1]
     if (previous) {
+        console.log('!!! previous', previous)
         if (previous.childNodes && previous.childNodes.length > 0) {
             return getDeepestDescendant(previous)
         }
@@ -143,6 +144,7 @@ export class Tree extends React.PureComponent<Props, State> {
         },
         [Key.ArrowUp]: () => {
             if (this.state.selectedNode) {
+                console.log('!!!!SELECTED NODE', this.state.selectedNode)
                 this.selectNode(previousChild(this.state.selectedNode, this.state.selectedNode.index))
             }
         },
@@ -318,11 +320,15 @@ export class Tree extends React.PureComponent<Props, State> {
                 ref={this.setTreeElement}
             >
                 <TreeRoot
-                    ref={reference => {
-                        if (reference) {
-                            this.node = reference.node
-                        }
+                    initializeParentNode={(node: TreeNode) => {
+                        console.log('!!!!! NODE', node)
+                        this.node = node
                     }}
+                    // ref={reference => {
+                    //     if (reference) {
+                    //         this.node = reference.node
+                    //     }
+                    // }}
                     activeNode={this.state.activeNode}
                     activePath={this.props.activePath}
                     depth={0}
