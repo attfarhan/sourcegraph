@@ -127,11 +127,6 @@ export class TreeLayer extends React.Component<TreeLayerProps, TreeLayerState> {
         if (this.props.activePath === this.node.path) {
             this.props.setActiveNode(this.node)
         }
-
-        // This handles pre-fetching when a user
-        // hovers over a directory. The `subscribe` is empty because
-        // we simply want to cache the network request.
-        this.props.onHover(this.node.path)
     }
 
     public shouldComponentUpdate(nextProps: TreeLayerProps): boolean {
