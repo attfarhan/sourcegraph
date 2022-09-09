@@ -48,7 +48,6 @@ export class TreeLayer extends React.Component<TreeLayerProps, TreeLayerState> {
     public node: TreeNode
     private subscriptions = new Subscription()
     private componentUpdates = new Subject<TreeLayerProps>()
-    private rowHovers = new Subject<string>()
 
     constructor(props: TreeLayerProps) {
         super(props)
