@@ -2,17 +2,7 @@
 import * as React from 'react'
 
 import { EMPTY, merge, of, Subject, Subscription } from 'rxjs'
-import {
-    catchError,
-    debounceTime,
-    delay,
-    distinctUntilChanged,
-    filter,
-    mergeMap,
-    share,
-    switchMap,
-    takeUntil,
-} from 'rxjs/operators'
+import { catchError, delay, distinctUntilChanged, filter, share, switchMap, takeUntil } from 'rxjs/operators'
 import { FileDecoration } from 'sourcegraph'
 
 import { asError, ErrorLike, isErrorLike } from '@sourcegraph/common'
@@ -141,23 +131,7 @@ export class TreeLayer extends React.Component<TreeLayerProps, TreeLayerState> {
         // This handles pre-fetching when a user
         // hovers over a directory. The `subscribe` is empty because
         // we simply want to cache the network request.
-        this.subscriptions.add(
-            this.rowHovers
-                .pipe(
-                    debounceTime(100),
-                    mergeMap(path =>
-                        fetchTreeEntries({
-                            repoName: this.props.repoName,
-                            revision: this.props.revision,
-                            commitID: this.props.commitID,
-                            filePath: path,
-                            first: MAX_TREE_ENTRIES,
-                            requestGraphQL: ({ request, variables }) => requestGraphQL(request, variables),
-                        }).pipe(catchError(error => [asError(error)]))
-                    )
-                )
-                .subscribe()
-        )
+        this.props.onHover(this.node.path)
     }
 
     public shouldComponentUpdate(nextProps: TreeLayerProps): boolean {

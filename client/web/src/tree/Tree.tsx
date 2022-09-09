@@ -270,9 +270,9 @@ export class Tree extends React.PureComponent<Props, State> {
                         })
                     }
 
-                    // Recompute with new paths and parent path. But if the new active path is below where we are now,
-                    // preserve the current parent path, so that it's easy for the user to go back up. Also resets the selectedNode
-                    // to the top-level Tree component and resets resolveTo so no directories are expanded.
+                    // When landing on an active path that is ABOVE (a parent or ancestor of) the current active path, recompute with new paths and parent path.
+                    // Also resets the selectedNode to the top-level Tree component and resets resolveTo so no directories are expanded.
+                    // This renders the tree layer above with every directory collapsed.
                     if (!pathEqualToOrAncestor(this.state.parentPath || '', newParentPath)) {
                         this.setState({
                             parentPath: dotPathAsUndefined(
