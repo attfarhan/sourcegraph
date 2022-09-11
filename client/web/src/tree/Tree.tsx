@@ -54,6 +54,7 @@ interface State {
 }
 
 export interface TreeNode {
+    // index represents the node's order in its parent's childNode list
     index: number
     parent: TreeNode | null
     childNodes: TreeNode[]
@@ -125,7 +126,7 @@ const previousChild = (node: TreeNode, index: number): TreeNode => {
     return getDeepestDescendant(node.parent)
 }
 
-export class Tree extends React.PureComponent<Props, State> {
+export class Tree extends React.Component<Props, State> {
     private componentUpdates = new Subject<Props>()
     // This fires whenever a directory is expanded or collapsed.
     private expandDirectoryChanges = new Subject<{ path: string; expanded: boolean; node: TreeNode }>()

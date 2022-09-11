@@ -13,6 +13,7 @@ import {
     share,
     switchMap,
     takeUntil,
+    tap,
 } from 'rxjs/operators'
 
 import { asError, ErrorLike, isErrorLike } from '@sourcegraph/common'
@@ -87,11 +88,30 @@ export class TreeRoot extends React.Component<TreeRootProps, TreeRootState> {
             fileDecorationsByPath: {},
         }
     }
+    private fetchTreeEntriesPromise = async (props: TreeRootProps): Promise<TreeFields | Error> =>
+        fetchTreeEntries({
+            repoName: props.repoName,
+            revision: props.revision,
+            commitID: props.commitID,
+            filePath: props.parentPath || '',
+            requestGraphQL: ({ request, variables }) => requestGraphQL(request, variables),
+        }).toPromise()
+
+    private fetchWithPromise = async (props: TreeRootProps): Promise<void> => {
+        try {
+            this.setState({ treeOrError: LOADING })
+            const entries = await this.fetchTreeEntriesPromise(props)
+            this.setState({ treeOrError: entries })
+            return
+        } catch (error) {
+            this.setState({ treeOrError: error })
+            return
+        }
+    }
 
     public componentDidMount(): void {
         // Set this row as a childNode of its TreeLayer parent
         this.props.setChildNodes(this.node, this.node.index)
-
         const treeOrErrors = this.componentUpdates.pipe(
             distinctUntilChanged(compareTreeProps),
             filter(props => props.isExpanded),
@@ -111,19 +131,23 @@ export class TreeRoot extends React.Component<TreeRootProps, TreeRootState> {
             })
         )
 
-        this.subscriptions.add(
-            treeOrErrors.subscribe(
-                treeOrError => {
-                    // clear file decorations before latest file decorations come
-                    this.setState({ treeOrError, fileDecorationsByPath: {} })
-                },
-                error => console.error(error)
-            )
-        )
+        // this.subscriptions.add(
+        //     treeOrErrors.subscribe(
+        //         treeOrError => {
+        //             console.log('treeOrErrors2 executed')
+        //             // clear file decorations before latest file decorations come
+        //             this.setState({ treeOrError, fileDecorationsByPath: {} })
+        //         },
+        //         error => console.error(error)
+        //     )
+        // )
 
         this.subscriptions.add(
             treeOrErrors
                 .pipe(
+                    tap(() => {
+                        console.log('treeOrErrors Executed')
+                    }),
                     switchMap(treeOrError =>
                         treeOrError !== 'loading' && !isErrorLike(treeOrError)
                             ? getFileDecorations({
@@ -162,11 +186,14 @@ export class TreeRoot extends React.Component<TreeRootProps, TreeRootState> {
                 .subscribe()
         )
 
+        this.fetchWithPromise(this.props).catch(error => console.error(error))
+
         // When we're at the root tree layer, fetch the tree contents on mount.
         this.componentUpdates.next(this.props)
     }
 
     public componentDidUpdate(): void {
+        this.fetchWithPromise(this.props).catch(error => console.error(error))
         this.componentUpdates.next(this.props)
     }
     public componentWillUnmount(): void {
