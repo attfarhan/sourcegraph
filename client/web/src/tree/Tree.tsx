@@ -4,7 +4,7 @@ import * as React from 'react'
 import * as H from 'history'
 import { isEqual } from 'lodash'
 import { Subject, Subscription } from 'rxjs'
-import { distinctUntilChanged, startWith } from 'rxjs/operators'
+import { distinctUntilChanged, filter, startWith } from 'rxjs/operators'
 import { Key } from 'ts-key-enum'
 
 import { formatSearchParameters } from '@sourcegraph/common'
@@ -237,7 +237,7 @@ export class Tree extends React.PureComponent<Props, State> {
 
     public componentDidMount(): void {
         this.subscriptions.add(
-            this.keyDown.subscribe(event => {
+            this.keyDown.pipe(filter(event => !!this.keyHandlers[event.key])).subscribe(event => {
                 const handler = this.keyHandlers[event.key]
                 if (handler) {
                     event.preventDefault()
