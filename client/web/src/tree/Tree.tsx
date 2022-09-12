@@ -129,6 +129,7 @@ export class Tree extends React.PureComponent<Props, State> {
     private componentUpdates = new Subject<Props>()
     // This fires whenever a directory is expanded or collapsed.
     private expandDirectoryChanges = new Subject<{ path: string; expanded: boolean; node: TreeNode }>()
+    private keyDown = new Subject<React.KeyboardEvent<HTMLElement>>()
     private subscriptions = new Subscription()
 
     public node: TreeNode
@@ -235,6 +236,16 @@ export class Tree extends React.PureComponent<Props, State> {
     }
 
     public componentDidMount(): void {
+        this.subscriptions.add(
+            this.keyDown.subscribe(event => {
+                const handler = this.keyHandlers[event.key]
+                if (handler) {
+                    event.preventDefault()
+                    handler()
+                }
+            })
+        )
+
         this.subscriptions.add(
             this.expandDirectoryChanges.subscribe(({ path, expanded, node }) => {
                 this.setState(previousState => ({
@@ -386,11 +397,12 @@ export class Tree extends React.PureComponent<Props, State> {
     }
 
     private onKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
-        const handler = this.keyHandlers[event.key]
-        if (handler) {
-            event.preventDefault()
-            handler()
-        }
+        this.keyDown.next(event)
+        // const handler = this.keyHandlers[event.key]
+        // if (handler) {
+        //     event.preventDefault()
+        //     handler()
+        // }
     }
 
     private setTreeElement = (element: HTMLElement | null): void => {
